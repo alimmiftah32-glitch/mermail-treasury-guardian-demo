@@ -160,7 +160,7 @@ runTest('2.1: Extract executable inline <script> blocks', () => {
   while ((match = scriptRegex.exec(htmlContent)) !== null) {
     scripts.push(match[1]);
   }
-  assert.ok(scripts.length >= 2, `Expected at least 2 inline <script> blocks (Tailwind config + Simulator), found ${scripts.length}`);
+  assert.ok(scripts.length >= 1, `Expected at least 1 inline <script> block (Simulator), found ${scripts.length}`);
 });
 
 runTest('2.2: Compile each <script> block in node:vm without syntax errors', () => {
@@ -263,12 +263,9 @@ runTest('2.3: Execute simulator script in headless DOM sandbox with mock browser
   };
   vm.createContext(context);
 
-  // Run script 1 (Tailwind config)
-  vm.runInContext(scripts[0], context);
-
-  // Run script 2 (Simulator engine)
+  // Run every inline script in document order (the simulator engine)
   assert.doesNotThrow(() => {
-    vm.runInContext(scripts[1], context);
+    for (const code of scripts) vm.runInContext(code, context);
   }, 'Simulator engine execution threw an unexpected error');
 
   // Verify core global functions exist

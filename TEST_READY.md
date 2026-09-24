@@ -33,14 +33,14 @@ Each runner exits `0` when everything passes and non-zero with the failing asser
 | Module 2: DOM integrity | 39 | Every element ID the simulator needs is present |
 | Module 3: Design lint | 6 | No emoji, glow shadows, neon gradients, pulse animations, or `rounded-full` pills |
 | Module 4: Event bindings | 6 | Every control calls a declared handler; no dead `href="#"` links |
-| Module 5: Security engines | 8 | Engines exported on `window`, 32-byte Base58 validation, exact equality, poisoning detection, divergent segments, 0.05 SOL reserve, policy limits, operator rejection |
-| Tier 1: Feature paths | 6 | Happy path, poisoning defense, prompt injection, live policy edit, operator rejection, balance diff |
-| Tier 2: Boundaries | 14 | Address lengths 43/44/45, illegal characters, prefix/suffix thresholds 3/4/5, gas and limit edges |
-| Tier 3: Pairwise matrix | 36 | Vendor status × address match × deliverable × gas solvency |
-| Tier 4: Adversarial scenarios | 6 | Vanity spoofing, injection delimiters, limit increase, vendor quarantine, rejection, marginal gas |
+| Module 5: Security engines | 8 | Engines exported on `window`, 32-byte Base58 validation, exact equality, poisoning detection, divergent segments, 0.05 SOL reserve, single/daily/monthly limits, operator rejection |
+| Tier 1: Feature paths | 6 | Happy path, poisoning defense, prompt injection, admin limit edit, operator rejection, balance diff |
+| Tier 2: Boundaries | 14 | Address lengths 43/44/45, illegal characters, prefix/suffix thresholds 3/4/5, gas, single-limit, and daily-budget edges |
+| Tier 3: Pairwise matrix | 36 | Vendor state (active, frozen, unregistered) × address match × deliverable × gas solvency |
+| Tier 4: Adversarial scenarios | 6 | Vanity spoofing (vendor stays frozen until verified), injection delimiters, admin limit increase with duplicate-invoice rejection, vendor freeze, rejection, marginal gas |
 | Oracle baseline | 3 | Base58 round trip, 5/6 vanity match, 0.05 SOL reserve evaluation |
 
-Module 5 and Tiers 1–4 run against the engines the page itself exports (`SolanaCryptoEngine`, `AddressPoisoningEngine`, `SolanaGasSolver`, `TreasuryPolicyStore`, `GuardianFSM`), not against the oracle.
+Module 5 and Tiers 1–4 run against the engines the page itself exports (`SolanaCryptoEngine`, `AddressPoisoningEngine`, `SolanaGasSolver`, `TreasuryPolicyStore`, `GuardianFSM`), not against the oracle. Both use the skill's `workspace/treasury-policy.json` schema: vendors are resolved by `authorized_emails`, limits come from `limits`, and spend and vendor freezes live in a ledger and session state outside the policy.
 
 ## What the Suites Do Not Cover
 

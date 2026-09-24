@@ -387,15 +387,15 @@ const vmContext = vm.createContext({
   escapeHtml: (s) => String(s)
 });
 
-// Extract application script block (2nd non-src script block)
+// Extract application script block (last non-src script block)
 const scriptRegex = /<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/gi;
 const nonSrcScripts = [];
 let match;
 while ((match = scriptRegex.exec(htmlContent)) !== null) {
   nonSrcScripts.push(match[1]);
 }
-assert.ok(nonSrcScripts.length >= 2, 'Must find at least 2 inline script blocks in index.html');
-const appScriptSource = nonSrcScripts[1];
+assert.ok(nonSrcScripts.length >= 1, 'Must find the inline application script block in index.html');
+const appScriptSource = nonSrcScripts[nonSrcScripts.length - 1];
 
 // Execute script in VM context
 vm.runInContext(appScriptSource, vmContext);

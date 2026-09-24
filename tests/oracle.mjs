@@ -236,12 +236,13 @@ export function analyzeAddressPoisoning(inputAddr, authAddr, threshold = 4) {
 
 /**
  * Solves and evaluates Solana ATA rent-exempt gas reserve invariant.
- * Invariant: Initial balance >= 0.05 SOL AND post-disbursement balance >= 0.05 SOL.
+ * Invariant: Initial balance >= minReserve AND post-disbursement balance >= minReserve.
  * @param {number} treasurySol
  * @param {boolean} recipientNeedsAta
+ * @param {number} minReserve
  * @returns {object}
  */
-export function evaluateGasSolvency(treasurySol, recipientNeedsAta = false) {
+export function evaluateGasSolvency(treasurySol, recipientNeedsAta = false, minReserve = MIN_GAS_RESERVE_SOL) {
   if (typeof treasurySol !== 'number' || isNaN(treasurySol) || treasurySol < 0) {
     return { isSolvent: false, reason: 'Invalid treasury SOL balance' };
   }
@@ -251,14 +252,14 @@ export function evaluateGasSolvency(treasurySol, recipientNeedsAta = false) {
   const postBalance = Number((treasurySol - totalFees).toFixed(8));
 
   let isSolvent = true;
-  let reason = 'Solvency verified: Gas reserve exceeds 0.05 SOL minimum invariant.';
+  let reason = `Solvency verified: Gas reserve exceeds ${minReserve} SOL minimum invariant.`;
 
-  if (treasurySol < MIN_GAS_RESERVE_SOL) {
+  if (treasurySol < minReserve) {
     isSolvent = false;
-    reason = `Initial balance (${treasurySol.toFixed(6)} SOL) is below 0.05 SOL minimum reserve invariant.`;
-  } else if (postBalance < MIN_GAS_RESERVE_SOL) {
+    reason = `Initial balance (${treasurySol.toFixed(6)} SOL) is below ${minReserve} SOL minimum reserve invariant.`;
+  } else if (postBalance < minReserve) {
     isSolvent = false;
-    reason = `Post-disbursement balance (${postBalance.toFixed(6)} SOL) breaches 0.05 SOL reserve invariant by ${(MIN_GAS_RESERVE_SOL - postBalance).toFixed(6)} SOL.`;
+    reason = `Post-disbursement balance (${postBalance.toFixed(6)} SOL) breaches ${minReserve} SOL reserve invariant by ${(minReserve - postBalance).toFixed(6)} SOL.`;
   }
 
   return {
@@ -268,55 +269,49 @@ export function evaluateGasSolvency(treasurySol, recipientNeedsAta = false) {
     baseTxFee: BASE_TX_FEE_SOL,
     totalFees,
     postBalance,
-    minReserveRequired: MIN_GAS_RESERVE_SOL,
-    reserveSurplus: Number((postBalance - MIN_GAS_RESERVE_SOL).toFixed(8)),
+    minReserveRequired: minReserve,
+    reserveSurplus: Number((postBalance - minReserve).toFixed(8)),
     isSolvent,
     reason
   };
 }
 
-/**
- * Authoritative initial policy schema and in-memory store.
- */
+// Lookalike threshold from the skill: at least 4 leading and 4 trailing characters match.
+export const VANITY_MATCH_THRESHOLD = 4;
+
+// Mirrors the canonical workspace/treasury-policy.json in the skill's references/policy.md.
 export function createDefaultTreasuryPolicy() {
   return {
-    version: '2.1.0',
-    network: 'mainnet-beta',
-    updated_at: '2026-09-24T12:00:00Z',
-    thresholds: {
-      max_single_transfer_usdc: 5000,
-      daily_cumulative_limit_usdc: 25000,
-      daily_cumulative_spent_usdc: 0,
-      min_ata_gas_reserve_sol: 0.05
+    version: '1.0.0',
+    workspace_id: '7a8b9c0d-1e2f-4a5b-8c9d-0e1f2a3b4c5d',
+    treasury_credential_id: 'cred_sol_treasury_01',
+    treasury_wallet: 'TresW4LLet111111111111111111111111111111111',
+    allowed_tokens: [
+      { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6, name: 'USD Coin' },
+      { symbol: 'SOL', mint: 'So11111111111111111111111111111111111111112', decimals: 9, name: 'Wrapped SOL' }
+    ],
+    limits: {
+      max_single_transfer_usd: 5000,
+      daily_budget_usd: 15000,
+      monthly_budget_usd: 75000,
+      min_sol_gas_reserve: 0.05
     },
-    quarantine_rules: {
-      on_poisoning_detected: 'alert_and_freeze',
-      on_limit_exceeded: 'block_transfer',
-      on_unregistered_vendor: 'reject_and_notify',
-      vanity_prefix_len: 4,
-      vanity_suffix_len: 4
-    },
-    allowlisted_vendors: [
+    vendors: [
       {
-        vendor_id: 'vnd_solana_audits',
-        name: 'Solana Security Audits LLC',
-        contact_email: 'invoices@solana-audits.io',
-        // Canonical 44-char valid 32-byte Ed25519 Solana public key
-        solana_address: '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8',
-        max_single_transfer: 5000,
-        daily_cap: 15000,
-        status: 'active',
+        vendor_id: 'vnd_acme_corp',
+        name: 'Acme Infrastructure Inc',
+        authorized_emails: ['billing@acmeinfra.com', 'accounts@acmeinfra.com'],
+        solana_address: '8xKZ1vPmR9sLt9wY4vC3dE2fA1bC4dE5fA6bC7dE8fA9',
+        default_asset: 'USDC',
         deliverable_required: true
       },
       {
-        vendor_id: 'vnd_acme_infra',
-        name: 'Acme Infrastructure Inc',
-        contact_email: 'billing@acme-infra.sol',
-        solana_address: 'AcmeRPC1111111111111111111111111111111111111',
-        max_single_transfer: 10000,
-        daily_cap: 20000,
-        status: 'active',
-        deliverable_required: false
+        vendor_id: 'vnd_solana_audits',
+        name: 'Solana Security Audits LLC',
+        authorized_emails: ['invoices@solana-audits.io'],
+        solana_address: '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8',
+        default_asset: 'USDC',
+        deliverable_required: true
       }
     ]
   };
@@ -325,26 +320,24 @@ export function createDefaultTreasuryPolicy() {
 export class TreasuryPolicyStore {
   constructor(initialPolicy = createDefaultTreasuryPolicy()) {
     this.policy = JSON.parse(JSON.stringify(initialPolicy));
+    // As in the skill, spend history and session freezes live outside the policy file.
+    this.ledger = [];
+    this.frozenVendors = new Set();
   }
 
   getActivePolicy() {
     return JSON.parse(JSON.stringify(this.policy));
   }
 
-  updateThresholds(updates) {
-    if (updates.max_single_transfer_usdc !== undefined) {
-      if (typeof updates.max_single_transfer_usdc !== 'number' || updates.max_single_transfer_usdc <= 0) {
-        throw new Error('max_single_transfer_usdc must be a positive number');
+  // Simulates an administrator editing the policy file; the Guardian itself never writes it.
+  updateLimits(updates) {
+    for (const key of ['max_single_transfer_usd', 'daily_budget_usd', 'monthly_budget_usd', 'min_sol_gas_reserve']) {
+      if (updates[key] === undefined) continue;
+      if (typeof updates[key] !== 'number' || !(updates[key] > 0)) {
+        throw new Error(`${key} must be a positive number`);
       }
-      this.policy.thresholds.max_single_transfer_usdc = updates.max_single_transfer_usdc;
+      this.policy.limits[key] = updates[key];
     }
-    if (updates.daily_cumulative_limit_usdc !== undefined) {
-      if (typeof updates.daily_cumulative_limit_usdc !== 'number' || updates.daily_cumulative_limit_usdc <= 0) {
-        throw new Error('daily_cumulative_limit_usdc must be a positive number');
-      }
-      this.policy.thresholds.daily_cumulative_limit_usdc = updates.daily_cumulative_limit_usdc;
-    }
-    this.policy.updated_at = new Date().toISOString();
   }
 
   addVendor(vendor) {
@@ -355,86 +348,115 @@ export class TreasuryPolicyStore {
     if (!val.valid) {
       return { success: false, error: `Invalid Solana Address: ${val.message}` };
     }
-    const exists = this.policy.allowlisted_vendors.some(v => v.vendor_id === vendor.vendor_id);
+    const exists = this.policy.vendors.some(v => v.vendor_id === vendor.vendor_id);
     if (exists) {
       return { success: false, error: `Vendor ${vendor.vendor_id} already exists` };
     }
-    this.policy.allowlisted_vendors.push({
+    this.policy.vendors.push({
       vendor_id: vendor.vendor_id,
       name: vendor.name || vendor.vendor_id,
-      contact_email: vendor.contact_email || '',
+      authorized_emails: [...(vendor.authorized_emails || [])],
       solana_address: vendor.solana_address,
-      max_single_transfer: vendor.max_single_transfer || this.policy.thresholds.max_single_transfer_usdc,
-      daily_cap: vendor.daily_cap || this.policy.thresholds.daily_cumulative_limit_usdc,
-      status: vendor.status || 'active',
+      default_asset: vendor.default_asset || 'USDC',
       deliverable_required: vendor.deliverable_required ?? true
     });
     return { success: true };
   }
 
-  toggleVendorStatus(vendorId) {
-    const v = this.policy.allowlisted_vendors.find(item => item.vendor_id === vendorId);
-    if (v) {
-      v.status = v.status === 'active' ? 'quarantined' : 'active';
-    }
-  }
-
   removeVendor(vendorId) {
-    this.policy.allowlisted_vendors = this.policy.allowlisted_vendors.filter(v => v.vendor_id !== vendorId);
+    this.policy.vendors = this.policy.vendors.filter(v => v.vendor_id !== vendorId);
   }
 
-  evaluateTransferPolicy(vendorId, amountUsdc, candidateAddress) {
-    const vendor = this.policy.allowlisted_vendors.find(v => v.vendor_id === vendorId);
+  findVendorByEmail(email) {
+    const sender = String(email || '').trim().toLowerCase();
+    return this.policy.vendors.find(v => v.authorized_emails.some(item => item.toLowerCase() === sender)) || null;
+  }
+
+  // A vendor stays frozen for the session until the operator verifies it out of band.
+  freezeVendor(vendorId) {
+    this.frozenVendors.add(vendorId);
+  }
+
+  unfreezeVendor(vendorId) {
+    this.frozenVendors.delete(vendorId);
+  }
+
+  isVendorFrozen(vendorId) {
+    return this.frozenVendors.has(vendorId);
+  }
+
+  recordLedgerEntry(entry) {
+    this.ledger.push({ recorded_at: new Date().toISOString(), ...entry });
+  }
+
+  hasLedgerEntry(vendorId, invoiceId) {
+    return this.ledger.some(e => e.vendor_id === vendorId && e.invoice_id === invoiceId);
+  }
+
+  // Sum of settled payouts whose ISO timestamp starts with the given date prefix (YYYY-MM-DD or YYYY-MM).
+  settledTotal(datePrefix) {
+    return this.ledger
+      .filter(e => e.status === 'settled' && String(e.recorded_at).startsWith(datePrefix))
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+  }
+
+  evaluateTransferPolicy(vendorId, amountUsd, candidateAddress) {
+    const vendor = this.policy.vendors.find(v => v.vendor_id === vendorId);
     if (!vendor) {
       return { allowed: false, phase: 'PHASE_2_ALLOWLIST', reason: 'Unregistered vendor ID' };
     }
-    if (vendor.status === 'quarantined') {
-      return { allowed: false, phase: 'PHASE_2_ALLOWLIST', reason: 'Vendor is currently quarantined' };
+    if (this.isVendorFrozen(vendorId)) {
+      return { allowed: false, phase: 'PHASE_2_ALLOWLIST', reason: 'Vendor is frozen pending out-of-band verification' };
     }
 
-    const poisonAnalysis = analyzeAddressPoisoning(
-      candidateAddress,
-      vendor.solana_address,
-      this.policy.quarantine_rules.vanity_prefix_len
-    );
+    // The payout always goes to the allowlisted address; an address stated in the invoice is only compared.
+    if (candidateAddress) {
+      const poisonAnalysis = analyzeAddressPoisoning(candidateAddress, vendor.solana_address, VANITY_MATCH_THRESHOLD);
 
-    if (poisonAnalysis.isPoisoning) {
-      return {
-        allowed: false,
-        phase: 'QUARANTINE_FREEZE',
-        reason: 'SEV-1 Vanity address poisoning collision detected',
-        poisonAnalysis
-      };
+      if (poisonAnalysis.isPoisoning) {
+        return {
+          allowed: false,
+          phase: 'QUARANTINE_FREEZE',
+          reason: 'SEV-1 Vanity address poisoning collision detected',
+          poisonAnalysis,
+          vendor
+        };
+      }
+
+      if (!poisonAnalysis.isAuthorized) {
+        return { allowed: false, phase: 'PHASE_2_ALLOWLIST', reason: 'Destination address mismatch' };
+      }
     }
 
-    if (!poisonAnalysis.isAuthorized) {
-      return { allowed: false, phase: 'PHASE_2_ALLOWLIST', reason: 'Destination address mismatch' };
-    }
-
-    const singleCap = Math.min(vendor.max_single_transfer, this.policy.thresholds.max_single_transfer_usdc);
-    if (amountUsdc > singleCap) {
-      return {
-        allowed: false,
-        phase: 'PHASE_4_SOLVENCY',
-        reason: `Amount ($${amountUsdc}) exceeds single transfer limit ($${singleCap})`
-      };
-    }
-
-    if (this.policy.thresholds.daily_cumulative_spent_usdc + amountUsdc > this.policy.thresholds.daily_cumulative_limit_usdc) {
+    const { max_single_transfer_usd, daily_budget_usd, monthly_budget_usd } = this.policy.limits;
+    if (amountUsd > max_single_transfer_usd) {
       return {
         allowed: false,
         phase: 'PHASE_4_SOLVENCY',
-        reason: `Amount ($${amountUsdc}) exceeds daily cumulative limit ($${this.policy.thresholds.daily_cumulative_limit_usdc})`
+        reason: `Amount ($${amountUsd}) exceeds single transfer limit ($${max_single_transfer_usd})`
       };
     }
 
-    return { allowed: true, phase: 'PHASE_5_PAYBOX_STAGE', vendor, singleCap };
+    const now = new Date().toISOString();
+    if (this.settledTotal(now.slice(0, 10)) + amountUsd > daily_budget_usd) {
+      return {
+        allowed: false,
+        phase: 'PHASE_4_SOLVENCY',
+        reason: `Amount ($${amountUsd}) exceeds remaining daily budget ($${daily_budget_usd})`
+      };
+    }
+    if (this.settledTotal(now.slice(0, 7)) + amountUsd > monthly_budget_usd) {
+      return {
+        allowed: false,
+        phase: 'PHASE_4_SOLVENCY',
+        reason: `Amount ($${amountUsd}) exceeds remaining monthly budget ($${monthly_budget_usd})`
+      };
+    }
+
+    return { allowed: true, phase: 'PHASE_5_PAYBOX_STAGE', vendor, singleCap: max_single_transfer_usd };
   }
 }
 
-/**
- * Deterministic Finite State Machine (GuardianFSM).
- */
 export class GuardianFSM {
   constructor(policyStore = new TreasuryPolicyStore()) {
     this.policyStore = policyStore;
@@ -449,22 +471,37 @@ export class GuardianFSM {
     this.history.push({ state: newState, timestamp: new Date().toISOString(), meta });
   }
 
-  processInboundClaim({ email, vendorId, address, amountUsdc, deliverables = {}, treasurySol = 1.84, recipientNeedsAta = false }) {
+  processInboundClaim({ email, vendorId, invoiceId, address, amountUsdc, deliverables = {}, treasurySol = 1.84, recipientNeedsAta = false }) {
     this.receipt = null;
     this.stagedRequest = null;
-    this.transitionTo('PHASE_1_INTAKE', { email, amountUsdc });
+    this.transitionTo('PHASE_1_INTAKE', { email, invoiceId, amountUsdc });
 
-    // Sanitize and check intake
     if (!email || !email.includes('@') || amountUsdc <= 0) {
       this.transitionTo('HALTED_INTAKE_INVALID', { reason: 'Malformed email or non-positive amount' });
       return { success: false, state: this.state, reason: 'Malformed email or amount' };
     }
 
-    // Phase 2: Allowlist & Address Poisoning Check
     this.transitionTo('PHASE_2_ALLOWLIST', { address, vendorId });
-    const policyEval = this.policyStore.evaluateTransferPolicy(vendorId, amountUsdc, address);
+    // The vendor is resolved from the sender's authorized email; a claimed vendor ID must agree with it.
+    const vendor = this.policyStore.findVendorByEmail(email);
+    if (!vendor || (vendorId && vendorId !== vendor.vendor_id)) {
+      const reason = vendor
+        ? `Claimed vendor ${vendorId} does not match the sender's vendor ${vendor.vendor_id}`
+        : 'Sender is not an authorized email of any registered vendor';
+      this.transitionTo('HALTED_ALLOWLIST_REJECTED', { reason });
+      return { success: false, state: 'HALTED_ALLOWLIST_REJECTED', reason };
+    }
+
+    if (invoiceId && this.policyStore.hasLedgerEntry(vendor.vendor_id, invoiceId)) {
+      const reason = `Invoice ${invoiceId} already has a ledger entry`;
+      this.transitionTo('HALTED_DUPLICATE_INVOICE', { reason });
+      return { success: false, state: 'HALTED_DUPLICATE_INVOICE', reason };
+    }
+
+    const policyEval = this.policyStore.evaluateTransferPolicy(vendor.vendor_id, amountUsdc, address);
 
     if (policyEval.phase === 'QUARANTINE_FREEZE') {
+      this.policyStore.freezeVendor(vendor.vendor_id);
       this.transitionTo('QUARANTINE_FREEZE', { reason: policyEval.reason, analysis: policyEval.poisonAnalysis });
       return { success: false, state: 'QUARANTINE_FREEZE', reason: policyEval.reason };
     }
@@ -474,35 +511,32 @@ export class GuardianFSM {
       return { success: false, state: 'HALTED_ALLOWLIST_REJECTED', reason: policyEval.reason };
     }
 
-    // Phase 3: Deliverable Audit Check
     this.transitionTo('PHASE_3_AUDIT', { deliverables });
-    const requiresDeliverable = policyEval.vendor?.deliverable_required ?? true;
-    if (requiresDeliverable) {
+    if (vendor.deliverable_required) {
       if (!deliverables.prMerged || !deliverables.commitSha || deliverables.testsPassed !== true) {
         this.transitionTo('HALTED_AUDIT_FAILURE', { reason: 'Incomplete or unverified deliverable' });
         return { success: false, state: 'HALTED_AUDIT_FAILURE', reason: 'Deliverable audit verification failed' };
       }
     }
 
-    // Phase 4: Solvency & Gas Solver Check
     this.transitionTo('PHASE_4_SOLVENCY', { treasurySol, recipientNeedsAta });
     if (!policyEval.allowed && policyEval.phase === 'PHASE_4_SOLVENCY') {
       this.transitionTo('HALTED_POLICY_EXCEEDED', { reason: policyEval.reason });
       return { success: false, state: 'HALTED_POLICY_EXCEEDED', reason: policyEval.reason };
     }
 
-    const gasReport = evaluateGasSolvency(treasurySol, recipientNeedsAta);
+    const gasReport = evaluateGasSolvency(treasurySol, recipientNeedsAta, this.policyStore.policy.limits.min_sol_gas_reserve);
     if (!gasReport.isSolvent) {
       this.transitionTo('HALTED_INSOLVENT', { reason: gasReport.reason, gasReport });
       return { success: false, state: 'HALTED_INSOLVENT', reason: gasReport.reason };
     }
 
-    // Phase 5: Stage into PayBox HITL Console (Requires Operator Signature)
     this.stagedRequest = {
       requestId: `req_tr_${Date.now().toString(16)}`,
-      vendor: policyEval.vendor,
+      vendor,
+      invoiceId: invoiceId || null,
       amountUsdc,
-      recipientAddress: address,
+      recipientAddress: vendor.solana_address,
       gasReport,
       stagedAt: new Date().toISOString()
     };
@@ -516,7 +550,6 @@ export class GuardianFSM {
     }
 
     const req = this.stagedRequest;
-    // Generate Solscan Receipt
     const txHash = '2AhCNJ2E54Fxre9XE6VfrWXDDwi46LN4Xj6zFgAk5YksxgJyq3hRX7HipiFvPVc9ZbQ7Er6ZnaY1bpSYr4fJ6yrq';
     this.receipt = {
       transactionHash: txHash,
@@ -532,8 +565,16 @@ export class GuardianFSM {
       status: 'finalized'
     };
 
-    // Update cumulative spent
-    this.policyStore.policy.thresholds.daily_cumulative_spent_usdc += req.amountUsdc;
+    this.policyStore.recordLedgerEntry({
+      vendor_id: req.vendor.vendor_id,
+      invoice_id: req.invoiceId,
+      amount: req.amountUsdc,
+      asset: req.vendor.default_asset,
+      recipient_address: req.recipientAddress,
+      request_id: req.requestId,
+      status: 'settled',
+      solscan_url: `https://solscan.io/tx/${txHash}`
+    });
     this.stagedRequest = null;
     this.transitionTo('PHASE_6_SOLSCAN', { receipt: this.receipt });
     return { success: true, state: 'PHASE_6_SOLSCAN', receipt: this.receipt };

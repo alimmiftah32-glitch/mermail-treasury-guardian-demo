@@ -26,6 +26,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      - name: Build Tailwind CSS
+        run: npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i src/tailwind.css -o styles.css --minify
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

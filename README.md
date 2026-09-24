@@ -36,6 +36,18 @@ Open `index.html` in any modern web browser or visit the [Live GitHub Pages Demo
 - **Scenario B (Vanity Address Poisoning Attack)**: Attacker sends an urgent email spoofing the vendor with an address matching the first 5 (`4uQeV`) and last 6 (`ziofM8`) characters. Agent halts execution into emergency quarantine. Zero wallet tools are invoked, and treasury funds remain 100% secure.
 - **Scenario C (Prompt Injection)**: Attacker embeds instructions in the invoice attempting to override the agent. Agent sandboxing prevents any unauthorized execution.
 
+The simulator's default policy is the same object as the canonical `workspace/treasury-policy.json` in the skill's `references/policy.md`: vendors are matched by `authorized_emails`, and the limits are $5,000 per transfer, $15,000 per day, $75,000 per month, and a 0.05 SOL reserve.
+
+---
+
+## Styling
+
+`styles.css` is compiled with Tailwind 3.4.17 from `tailwind.config.js` and `src/tailwind.css`; the Pages workflow rebuilds it on every deploy. After changing classes in `index.html`, rebuild it locally:
+
+```bash
+npx tailwindcss@3.4.17 -c tailwind.config.js -i src/tailwind.css -o styles.css --minify
+```
+
 ---
 
 ## Verification & Test Evidence

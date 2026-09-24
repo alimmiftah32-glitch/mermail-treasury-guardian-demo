@@ -262,7 +262,7 @@ Module 5: Security Invariant Headless Unit Tests
   - 5.4: Address poisoning collision detection (>= 4/4 prefix/suffix matching)
   - 5.5: Visual divergent byte segments partition address into prefix, diverged, and suffix
   - 5.6: Solana ATA rent-exemption & 0.05 SOL minimum gas reserve invariant
-  - 5.7: Policy threshold enforcement (single transfer ceiling & daily cumulative limit)
+  - 5.7: Policy limit enforcement (single transfer ceiling, daily budget, monthly budget)
   - 5.8: Operator rejection workflow safely aborts transfer and prevents on-chain broadcast
 
 TIERS 1-4 TEST MATRIX SUMMARY:
@@ -598,7 +598,7 @@ describe('Module 5: Security Invariant Headless Unit Tests', () => {
     assert.equal(r5.isSolvent, true, '0.05204428 SOL with ATA cost leaves exactly 0.050000 SOL');
   });
 
-  it('5.7: Policy store enforces single transfer limits and cumulative daily limits', () => {
+  it('5.7: Policy store enforces single transfer, daily budget, and monthly budget limits', () => {
     const store = new policyStoreClass();
     const vendorId = 'vnd_solana_audits';
     const authKey = '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8';
@@ -611,6 +611,14 @@ describe('Module 5: Security Invariant Headless Unit Tests', () => {
     const eval2 = store.evaluateTransferPolicy(vendorId, 5001, authKey);
     assert.equal(eval2.allowed, false, '5001 USDC must be rejected');
     assert.equal(eval2.phase, 'PHASE_4_SOLVENCY');
+
+    // Monthly budget: lift the daily budget so only the $75,000 monthly budget binds
+    store.updateLimits({ daily_budget_usd: 1000000 });
+    store.recordLedgerEntry({ vendor_id: 'vnd_acme_corp', invoice_id: 'INV-SEED', amount: 74500, status: 'settled' });
+    assert.equal(store.evaluateTransferPolicy(vendorId, 500, authKey).allowed, true, '$74,500 + $500 = $75,000 must fit the monthly budget');
+    const overMonthly = store.evaluateTransferPolicy(vendorId, 501, authKey);
+    assert.equal(overMonthly.allowed, false, '$74,500 + $501 must exceed the monthly budget');
+    assert.match(overMonthly.reason, /monthly budget/);
   });
 
   it('5.8: Operator rejection workflow safely aborts transfer and prevents on-chain broadcast', () => {
@@ -715,11 +723,8 @@ describe('Tier 1: Feature Coverage (Core Functional Paths)', () => {
     assert.equal(r1.success, false);
     assert.equal(fsm.state, 'HALTED_POLICY_EXCEEDED');
 
-    // Operator updates policy limit
-    store.updateThresholds({ max_single_transfer_usdc: 8000 });
-    // Also update vendor single transfer cap
-    const v = store.policy.allowlisted_vendors.find(item => item.vendor_id === 'vnd_solana_audits');
-    v.max_single_transfer = 8000;
+    // Admin raises the policy limit
+    store.updateLimits({ max_single_transfer_usd: 8000 });
 
     // Re-run check -> Passes to PayBox
     const r2 = fsm.processInboundClaim({
@@ -857,16 +862,16 @@ describe('Tier 2: Boundary Value & Range Analysis', () => {
     assert.equal(res.phase, 'PHASE_4_SOLVENCY');
   });
 
-  it('TC-2.13: Daily cumulative limit boundary: $24,000 spent + $1,000 = $25,000 on $25,000 cap -> PASS', () => {
+  it('TC-2.13: Daily budget boundary: $14,000 settled today + $1,000 = $15,000 on $15,000 budget -> PASS', () => {
     const store = new policyStoreClass();
-    store.policy.thresholds.daily_cumulative_spent_usdc = 24000;
+    store.recordLedgerEntry({ vendor_id: 'vnd_acme_corp', invoice_id: 'INV-SEED', amount: 14000, status: 'settled' });
     const res = store.evaluateTransferPolicy('vnd_solana_audits', 1000, '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8');
     assert.equal(res.allowed, true);
   });
 
-  it('TC-2.14: Daily cumulative limit boundary: $24,000 spent + $1,001 = $25,001 on $25,000 cap -> FAIL', () => {
+  it('TC-2.14: Daily budget boundary: $14,000 settled today + $1,001 = $15,001 on $15,000 budget -> FAIL', () => {
     const store = new policyStoreClass();
-    store.policy.thresholds.daily_cumulative_spent_usdc = 24000;
+    store.recordLedgerEntry({ vendor_id: 'vnd_acme_corp', invoice_id: 'INV-SEED', amount: 14000, status: 'settled' });
     const res = store.evaluateTransferPolicy('vnd_solana_audits', 1001, '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8');
     assert.equal(res.allowed, false);
     assert.equal(res.phase, 'PHASE_4_SOLVENCY');
@@ -880,7 +885,7 @@ describe('Tier 3: Pairwise Combinatorial Matrix (36 Orthogonal Cases)', () => {
   const fsmClass = vmContext?.GuardianFSM || Oracle.GuardianFSM;
   const policyStoreClass = vmContext?.TreasuryPolicyStore || Oracle.TreasuryPolicyStore;
 
-  const VENDOR_STATUSES = ['Active', 'Quarantined', 'Unregistered'];
+  const VENDOR_STATUSES = ['Active', 'Frozen', 'Unregistered'];
   const ADDRESS_MATCHES = ['Exact Match', 'Vanity Collision', 'Mismatch'];
   const DELIVERABLES = ['Valid Deliverable', 'Missing Deliverable'];
   const GAS_SOLVENCIES = ['Safe Gas (>=0.05)', 'Insufficient Gas (<0.05)'];
@@ -899,8 +904,8 @@ describe('Tier 3: Pairwise Combinatorial Matrix (36 Orthogonal Cases)', () => {
             let candidateAddr = '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8';
 
             // Configure vendor status
-            if (vStatus === 'Quarantined') {
-              store.toggleVendorStatus(vendorId); // changes active to quarantined
+            if (vStatus === 'Frozen') {
+              store.freezeVendor(vendorId); // frozen for the session pending out-of-band verification
             } else if (vStatus === 'Unregistered') {
               vendorId = 'vnd_unregistered_unknown';
             }
@@ -942,7 +947,7 @@ describe('Tier 3: Pairwise Combinatorial Matrix (36 Orthogonal Cases)', () => {
 
               if (vStatus === 'Active' && aMatch === 'Vanity Collision') {
                 assert.equal(fsm.state, 'QUARANTINE_FREEZE', 'Vanity collision on active vendor must freeze into SEV-1 quarantine');
-              } else if (vStatus === 'Quarantined' || vStatus === 'Unregistered' || aMatch === 'Mismatch' || aMatch === 'Vanity Collision') {
+              } else if (vStatus === 'Frozen' || vStatus === 'Unregistered' || aMatch === 'Mismatch' || aMatch === 'Vanity Collision') {
                 assert.equal(fsm.state, 'HALTED_ALLOWLIST_REJECTED', 'Inactive vendor or mismatched address must halt at allowlist');
               } else if (deliv === 'Missing Deliverable') {
                 assert.equal(fsm.state, 'HALTED_AUDIT_FAILURE');
@@ -978,6 +983,19 @@ describe('Tier 4: Real-World Adversarial & Operational Scenarios', () => {
     assert.equal(res.success, false);
     assert.equal(fsm.state, 'QUARANTINE_FREEZE');
     assert.equal(fsm.stagedRequest, null);
+
+    // The vendor stays frozen for the session, so even a correct claim is refused until verified out of band
+    const legit = {
+      email: 'invoices@solana-audits.io',
+      vendorId: 'vnd_solana_audits',
+      address: '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8',
+      amountUsdc: 2500,
+      deliverables: { prMerged: true, commitSha: '8f2a1b9c3d4e', testsPassed: true },
+      treasurySol: 1.84
+    };
+    assert.equal(fsm.processInboundClaim(legit).state, 'HALTED_ALLOWLIST_REJECTED');
+    fsm.policyStore.unfreezeVendor('vnd_solana_audits');
+    assert.equal(fsm.processInboundClaim(legit).state, 'PHASE_5_PAYBOX_STAGE');
   });
 
   it('TC-4.2: Adversarial Delimiter Prompt Injection ([/SYSTEM_OVERRIDE] ignored, unknown vendor rejected)', () => {
@@ -996,7 +1014,7 @@ describe('Tier 4: Real-World Adversarial & Operational Scenarios', () => {
     assert.equal(fsm.state, 'HALTED_ALLOWLIST_REJECTED');
   });
 
-  it('TC-4.3: Operator Dynamic Policy Increase ($7,500 milestone approved after live limit update)', () => {
+  it('TC-4.3: Admin Policy Increase ($7,500 milestone paid once after the limit update; resubmission is a duplicate)', () => {
     const store = new policyStoreClass();
     const fsm = new fsmClass(store);
 
@@ -1004,6 +1022,7 @@ describe('Tier 4: Real-World Adversarial & Operational Scenarios', () => {
     const r1 = fsm.processInboundClaim({
       email: 'invoices@solana-audits.io',
       vendorId: 'vnd_solana_audits',
+      invoiceId: 'INV-2026-099',
       address: '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8',
       amountUsdc: 7500,
       deliverables: { prMerged: true, commitSha: '8f2a1b9c3d4e', testsPassed: true },
@@ -1011,31 +1030,37 @@ describe('Tier 4: Real-World Adversarial & Operational Scenarios', () => {
     });
     assert.equal(r1.success, false);
 
-    // Operator updates policy
-    store.updateThresholds({ max_single_transfer_usdc: 8000 });
-    const vendor = store.policy.allowlisted_vendors.find(v => v.vendor_id === 'vnd_solana_audits');
-    vendor.max_single_transfer = 8000;
+    // Admin raises the policy limit
+    store.updateLimits({ max_single_transfer_usd: 8000 });
 
     // Second attempt succeeds
-    const r2 = fsm.processInboundClaim({
+    const claim = {
       email: 'invoices@solana-audits.io',
       vendorId: 'vnd_solana_audits',
+      invoiceId: 'INV-2026-099',
       address: '4uQeVj5tqViQh7yWWGStvfEG1Zmhx6uasJtWCJziofM8',
       amountUsdc: 7500,
       deliverables: { prMerged: true, commitSha: '8f2a1b9c3d4e', testsPassed: true },
       treasurySol: 1.84
-    });
+    };
+    const r2 = fsm.processInboundClaim(claim);
     assert.equal(r2.success, true);
     assert.equal(fsm.state, 'PHASE_5_PAYBOX_STAGE');
 
     fsm.operatorSign();
     assert.equal(fsm.state, 'PHASE_6_SOLSCAN');
     assert.equal(fsm.receipt.balanceChanges.recipientDiff, 7500);
+    assert.equal(store.ledger.length, 1, 'Settlement must be recorded in the ledger');
+
+    // Resubmitting the paid invoice is rejected as a duplicate
+    const r3 = fsm.processInboundClaim(claim);
+    assert.equal(r3.success, false);
+    assert.equal(fsm.state, 'HALTED_DUPLICATE_INVOICE');
   });
 
-  it('TC-4.4: Preemptive Vendor Quarantine (Toggled in Workbench, next claim rejected immediately)', () => {
+  it('TC-4.4: Preemptive Vendor Freeze (next claim rejected immediately)', () => {
     const store = new policyStoreClass();
-    store.toggleVendorStatus('vnd_solana_audits'); // now quarantined
+    store.freezeVendor('vnd_solana_audits');
 
     const fsm = new fsmClass(store);
     const res = fsm.processInboundClaim({
