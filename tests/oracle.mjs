@@ -107,7 +107,7 @@ export function validateSolanaAddress(addr) {
     return {
       valid: false,
       error: 'INVALID_LENGTH',
-      message: `Address length (${addr.length}) must be between 32 and 44 characters (canonical 44).`
+      message: `Address length (${addr.length}) must be between 32 and 44 Base58 characters.`
     };
   }
   const bytes = decodeBase58(addr);
@@ -129,7 +129,8 @@ export function validateSolanaAddress(addr) {
 }
 
 /**
- * Constant-time comparison between two public keys.
+ * Exact full-string equality between two public keys. Public keys are not
+ * secret, so this compares every character without any timing guarantees.
  * @param {string} a
  * @param {string} b
  * @returns {boolean}
@@ -168,7 +169,7 @@ export function analyzeAddressPoisoning(inputAddr, authAddr, threshold = 4) {
       suffixLen: 0,
       divergentCharLength: 0,
       byteMismatchCount: 0,
-      message: 'Full 44-character Base58 public key equality verified.',
+      message: 'Full-string Base58 public key equality verified.',
       segments: {
         input: { prefix: inputAddr, diverged: '', suffix: '' },
         auth: { prefix: authAddr, diverged: '', suffix: '' }
@@ -516,7 +517,7 @@ export class GuardianFSM {
 
     const req = this.stagedRequest;
     // Generate Solscan Receipt
-    const txHash = '5RzKpQe8XwN3tVb7Ym9L4uH2sJ6kF1cD0aE9gB8vW7xZ5qM3pL4sK6tN8rV0yX2w';
+    const txHash = '2AhCNJ2E54Fxre9XE6VfrWXDDwi46LN4Xj6zFgAk5YksxgJyq3hRX7HipiFvPVc9ZbQ7Er6ZnaY1bpSYr4fJ6yrq';
     this.receipt = {
       transactionHash: txHash,
       slot: 284910291,

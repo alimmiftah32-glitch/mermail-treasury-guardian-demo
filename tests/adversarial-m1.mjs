@@ -432,7 +432,7 @@ runTest('8.3: Scenario 1 Happy Path advances through all 6 phases to Solscan fin
   vmContext.simulateOperatorSignature();
   assert.equal(vm.runInContext('currentPhase', vmContext), 6, 'Should reach Phase 6 (Solscan Finality)');
   assert.equal(mockDocument.getElementById('solscan-status-pill').textContent, 'Settled & Finalized');
-  assert.equal(mockDocument.getElementById('solscan-tx').textContent, '5RzKpQe8XwN3tVb7Ym9L4uH2sJ6kF1cD0aE9gB8vW7xZ5qM3pL4sK6tN8rV0yX2w');
+  assert.equal(mockDocument.getElementById('solscan-tx').textContent, '2AhCNJ2E54Fxre9XE6VfrWXDDwi46LN4Xj6zFgAk5YksxgJyq3hRX7HipiFvPVc9ZbQ7Er6ZnaY1bpSYr4fJ6yrq');
 });
 
 runTest('8.4: Scenario 2 Vanity Address Poisoning Attack halts into Quarantine at Phase 2', () => {
@@ -506,6 +506,6 @@ if (failedTests > 0) {
   failures.forEach(f => console.error(`  - ${f.name}: ${f.error}`));
   process.exit(1);
 } else {
-  console.log('\nVERDICT: APPROVE - All 30 adversarial stress tests passed 100% with ZERO slop violations!');
+  console.log(`\nVERDICT: APPROVE - All ${totalTests} adversarial stress tests passed 100% with ZERO slop violations!`);
   process.exit(0);
 }

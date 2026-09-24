@@ -257,8 +257,8 @@ Module 4: Event Handler Bindings
 
 Module 5: Security Invariant Headless Unit Tests
   - 5.1: Namespaces implemented in window context (SolanaCryptoEngine, AddressPoisoningEngine, etc.)
-  - 5.2: 32-byte Ed25519 Base58 decoding & 44-character canonical length
-  - 5.3: Constant-time Base58 equality matching
+  - 5.2: 32-byte Ed25519 Base58 decoding & 32–44 character length bounds
+  - 5.3: Exact full-string Base58 equality matching
   - 5.4: Address poisoning collision detection (>= 4/4 prefix/suffix matching)
   - 5.5: Visual divergent byte segments partition address into prefix, diverged, and suffix
   - 5.6: Solana ATA rent-exemption & 0.05 SOL minimum gas reserve invariant
